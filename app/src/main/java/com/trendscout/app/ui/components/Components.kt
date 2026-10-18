@@ -316,8 +316,8 @@ fun CountryPickerDialog(
     initial: Set<String>,
     multi: Boolean,
     onDismiss: () -> Unit,
-    onDone: (Set<String>) -> Unit,
     options: List<String> = Countries.ALL,
+    onDone: (Set<String>) -> Unit,
 ) {
     var selected by remember { mutableStateOf(initial) }
     var custom by remember { mutableStateOf("") }
