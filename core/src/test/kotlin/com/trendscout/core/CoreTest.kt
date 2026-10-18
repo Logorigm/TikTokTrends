@@ -177,3 +177,13 @@ class CoreTest {
         assertEquals(12, Countries.PRIORITY.size)
     }
 }
+
+class CatalogTest {
+    @Test fun derivesTrendsFromVideos() {
+        val now = 1_760_000_000_000L
+        val v = Video(id = "1", url = "u", addedAt = now, hashtags = listOf("Cat"), soundTitle = "Song A", authorHandle = "x")
+        val list = com.trendscout.core.feed.TrendCatalog.build(listOf(v), emptyList(), now)
+        assertEquals(setOf("HASHTAG:cat", "SOUND:song_a"), list.map { it.trend.id }.toSet())
+        assertTrue(list.all { !it.persisted && it.videoCount == 1 })
+    }
+}

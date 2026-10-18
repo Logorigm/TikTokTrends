@@ -4,7 +4,9 @@ import com.trendscout.core.model.Period
 import com.trendscout.core.model.Trend
 import com.trendscout.core.model.TrendType
 import com.trendscout.core.model.Video
+import com.trendscout.core.model.linksTo
 import com.trendscout.core.model.normalizeTag
+import com.trendscout.core.model.trendIds
 import com.trendscout.core.scoring.MetricsCalculator
 import com.trendscout.core.scoring.ScoringContext
 import com.trendscout.core.scoring.TrendScore
@@ -145,6 +147,68 @@ object FeedEngine {
         SortMode.ENGAGEMENT -> list.sortedByDescending { it.metrics.engagementRate ?: -1.0 }
         SortMode.TOPIC_MATCH -> list.sortedWith(
             compareByDescending<FeedEntry> { it.topicMatch }.thenByDescending { it.score.score ?: -1 }
+        )
+    }
+}
+
+data class TrendEntry(
+    val trend: Trend,
+    val score: TrendScore,
+    val videoCount: Int,
+    val authors: Int,
+    /** Countries with popularity evidence, with the strongest basis. */
+    val countries: Map<String, com.trendscout.core.model.RegionBasis>,
+    /** Whether a row exists in storage (saved / annotated) or the trend is derived from video tags only. */
+    val persisted: Boolean,
+)
+
+/** Builds the list of hashtags / sounds / formats from stored trends plus tags found on videos. */
+object TrendCatalog {
+
+    fun build(
+        videos: List<Video>,
+        trends: List<Trend>,
+        now: Long,
+        countries: Set<String> = emptySet(),
+        types: Set<TrendType> = emptySet(),
+        text: String = "",
+    ): List<TrendEntry> {
+        val ctx = ScoringContext(videos, trends, now)
+        val byId = LinkedHashMap<String, Pair<Trend, Boolean>>()
+        trends.forEach { byId[it.id] = it to true }
+        for (v in videos) {
+            for (id in v.trendIds()) {
+                if (id in byId) continue
+                val type = TrendType.valueOf(id.substringBefore(':'))
+                val key = id.substringAfter(':')
+                val display = when (type) {
+                    TrendType.HASHTAG -> v.hashtags.firstOrNull { normalizeTag(it) == key } ?: key
+                    TrendType.SOUND -> v.soundTitle ?: key
+                    else -> v.formatTags.firstOrNull { normalizeTag(it) == key } ?: key
+                }
+                byId[id] = Trend(id = id, type = type, name = display.removePrefix("#"), createdAt = v.addedAt) to false
+            }
+        }
+        val q = text.trim().lowercase().removePrefix("#")
+        return byId.values.mapNotNull { (t, persisted) ->
+            if (types.isNotEmpty() && t.type !in types) return@mapNotNull null
+            if (q.isNotEmpty() && !t.name.lowercase().contains(q)) return@mapNotNull null
+            val geo = HashMap(ctx.countries(t.id))
+            t.popularIn.forEach { o -> geo.merge(o.countryCode, o.basis) { a, b -> if (a.reliability >= b.reliability) a else b } }
+            if (countries.isNotEmpty() && geo.keys.none { it in countries }) return@mapNotNull null
+            val linked = videos.filter { it.linksTo(t) }
+            TrendEntry(
+                trend = t,
+                score = TrendScorer.scoreTrend(t, linked, ctx, now),
+                videoCount = linked.size,
+                authors = linked.mapNotNull { it.authorHandle?.lowercase() }.distinct().size,
+                countries = geo,
+                persisted = persisted,
+            )
+        }.sortedWith(
+            compareByDescending<TrendEntry> { it.score.score ?: -1 }
+                .thenByDescending { it.authors }
+                .thenByDescending { it.videoCount }
         )
     }
 }

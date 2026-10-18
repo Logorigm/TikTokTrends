@@ -32,6 +32,8 @@ data class RegionObservation(
     val observedAt: Long,
     val rank: Int? = null,
     val note: String? = null,
+    /** Local storage id (0 when not persisted). */
+    val id: Long = 0,
 )
 
 /** A single, dated reading of public counters. Growth is only ever computed between snapshots. */
@@ -42,6 +44,7 @@ data class StatSnapshot(
     val comments: Long? = null,
     val shares: Long? = null,
     val source: String = SOURCE_MANUAL,
+    val id: Long = 0,
 ) {
     val engagement: Long?
         get() = if (likes == null && comments == null && shares == null) null
@@ -88,6 +91,7 @@ data class TrendSnapshot(
     val views: Long? = null,
     val rank: Int? = null,
     val source: String = SOURCE_MANUAL,
+    val id: Long = 0,
 )
 
 data class Trend(
