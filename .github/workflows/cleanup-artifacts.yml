@@ -4,6 +4,10 @@
 name: Cleanup artifacts
 
 on:
+  # правка этого файла в рабочей ветке запускает пробный прогон: только список, без удаления
+  push:
+    branches: ['ccr-**']
+    paths: ['.github/workflows/cleanup-artifacts.yml']
   workflow_dispatch:
     inputs:
       dry_run:
