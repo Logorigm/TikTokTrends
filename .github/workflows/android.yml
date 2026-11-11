@@ -27,10 +27,14 @@ jobs:
         with:
           name: TrendScout-debug-apk
           path: app/build/outputs/apk/debug/*.apk
+          # место под артефакты Actions в аккаунте общее и небольшое
+          retention-days: 14
       - name: Upload lint report
         if: always() && hashFiles('app/build.gradle.kts') != ''
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: lint-report
+          retention-days: 3
           path: app/build/reports/lint-results-debug.html
           if-no-files-found: ignore

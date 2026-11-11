@@ -1,0 +1,51 @@
+# Освобождает место под артефакты Actions (оно общее на весь аккаунт).
+# Оставляет самый свежий артефакт каждого вида, более старые копии удаляет.
+# Релизы, теги и код не трогает. Запуск вручную: Actions → Cleanup artifacts → Run workflow.
+name: Cleanup artifacts
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Только показать, что будет удалено (true) или удалить (false)'
+        type: boolean
+        default: true
+
+permissions:
+  actions: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/github-script@v7
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+        with:
+          script: |
+            const dry = process.env.DRY_RUN !== 'false';
+            const { owner, repo } = context.repo;
+            const all = await github.paginate(github.rest.actions.listArtifactsForRepo, { owner, repo, per_page: 100 });
+            const live = all.filter(a => !a.expired).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+            const mb = n => (n / 1048576).toFixed(1) + ' MB';
+            const seen = new Set();
+            let kept = 0, freed = 0, count = 0;
+            for (const a of live) {
+              // «WaifuDrop-1.0.57» и «WaifuDrop-1.0.58» — один и тот же вид артефакта
+              const kind = a.name.replace(/-\d+(\.\d+)*$/, '');
+              const info = `${a.name}  ${mb(a.size_in_bytes)}  ${a.created_at}  ${a.workflow_run?.head_branch ?? ''}`;
+              if (!seen.has(kind)) {
+                seen.add(kind);
+                kept += a.size_in_bytes;
+                core.info(`KEEP    ${info}`);
+                continue;
+              }
+              freed += a.size_in_bytes;
+              count++;
+              core.info(`${dry ? 'WOULD DELETE' : 'DELETE '} ${info}`);
+              if (!dry) await github.rest.actions.deleteArtifact({ owner, repo, artifact_id: a.id });
+            }
+            const line = `${dry ? 'dry run: would free' : 'freed'} ${mb(freed)} in ${count} artifacts, kept ${mb(kept)} in ${seen.size}`;
+            core.info(line);
+            await core.summary.addRaw(line).write();
